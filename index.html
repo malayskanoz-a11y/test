@@ -84,14 +84,17 @@
       const tile = 25;
       const gridCount = board.width / tile;
       const speedMs = 120;
-      let timer = null;
+      let animationFrame = null;
+      let lastStepTime = 0;
 
       let snake;
       let direction;
-      let pendingDirection;
+      let turnQueue;
       let food;
       let score;
       let gameOver;
+      let moveProgress;
+      let prevSnake;
 
       function resetGame() {
         snake = [
@@ -99,17 +102,20 @@
           { x: 7, y: 10 },
           { x: 6, y: 10 }
         ];
+        prevSnake = snake.map((segment) => ({ ...segment }));
         direction = { x: 1, y: 0 };
-        pendingDirection = { x: 1, y: 0 };
+        turnQueue = [];
         score = 0;
         gameOver = false;
+        moveProgress = 0;
+        lastStepTime = performance.now();
         scoreNode.textContent = String(score);
         placeFood();
-        if (timer) {
-          clearInterval(timer);
+
+        if (animationFrame) {
+          cancelAnimationFrame(animationFrame);
         }
-        timer = setInterval(step, speedMs);
-        draw();
+        animationFrame = requestAnimationFrame(loop);
       }
 
       function placeFood() {
@@ -121,12 +127,34 @@
         } while (snake.some((segment) => segment.x === food.x && segment.y === food.y));
       }
 
+      function loop(now) {
+        if (!gameOver) {
+          const elapsed = now - lastStepTime;
+          moveProgress = Math.min(elapsed / speedMs, 1);
+
+          if (elapsed >= speedMs) {
+            step();
+            const extra = elapsed % speedMs;
+            lastStepTime = now - extra;
+            moveProgress = extra / speedMs;
+          }
+        }
+
+        draw();
+        animationFrame = requestAnimationFrame(loop);
+      }
+
       function step() {
         if (gameOver) {
           return;
         }
 
-        direction = pendingDirection;
+        prevSnake = snake.map((segment) => ({ ...segment }));
+
+        if (turnQueue.length > 0) {
+          direction = turnQueue.shift();
+        }
+
         const head = {
           x: snake[0].x + direction.x,
           y: snake[0].y + direction.y
@@ -138,8 +166,7 @@
 
         if (hitWall || hitSelf) {
           gameOver = true;
-          clearInterval(timer);
-          draw();
+          moveProgress = 1;
           return;
         }
 
@@ -152,15 +179,12 @@
         } else {
           snake.pop();
         }
-
-        draw();
       }
 
       function draw() {
         ctx.fillStyle = "#213321";
         ctx.fillRect(0, 0, board.width, board.height);
 
-        // 画网格
         ctx.strokeStyle = "rgba(255,255,255,0.05)";
         for (let i = 0; i <= gridCount; i += 1) {
           const offset = i * tile;
@@ -174,15 +198,17 @@
           ctx.stroke();
         }
 
-        // 食物
         ctx.fillStyle = "#ff6b6b";
         roundRect(food.x * tile + 3, food.y * tile + 3, tile - 6, tile - 6, 6);
         ctx.fill();
 
-        // 蛇
         snake.forEach((segment, index) => {
+          const previous = prevSnake[index] ?? segment;
+          const x = lerp(previous.x, segment.x, moveProgress);
+          const y = lerp(previous.y, segment.y, moveProgress);
+
           ctx.fillStyle = index === 0 ? "#8ef58e" : "#67d167";
-          roundRect(segment.x * tile + 2, segment.y * tile + 2, tile - 4, tile - 4, 5);
+          roundRect(x * tile + 2, y * tile + 2, tile - 4, tile - 4, 5);
           ctx.fill();
         });
 
@@ -198,6 +224,10 @@
         }
       }
 
+      function lerp(from, to, t) {
+        return from + (to - from) * t;
+      }
+
       function roundRect(x, y, w, h, r) {
         ctx.beginPath();
         ctx.moveTo(x + r, y);
@@ -206,6 +236,10 @@
         ctx.arcTo(x, y + h, x, y, r);
         ctx.arcTo(x, y, x + w, y, r);
         ctx.closePath();
+      }
+
+      function isReverse(next, current) {
+        return next.x === -current.x && next.y === -current.y;
       }
 
       window.addEventListener("keydown", (event) => {
@@ -226,9 +260,17 @@
           return;
         }
 
-        const isReverse = next.x === -direction.x && next.y === -direction.y;
-        if (!isReverse) {
-          pendingDirection = next;
+        const queueTail = turnQueue.at(-1) ?? direction;
+        if (isReverse(next, queueTail)) {
+          return;
+        }
+
+        if (next.x === queueTail.x && next.y === queueTail.y) {
+          return;
+        }
+
+        if (turnQueue.length < 2) {
+          turnQueue.push(next);
         }
       });
 
