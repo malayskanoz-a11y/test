@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>贪吃蛇小游戏</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(circle at top, #2f4f4f, #121212);
+      }
+
+      .panel {
+        width: min(92vw, 520px);
+        padding: 16px;
+        border-radius: 14px;
+        background: rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(5px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        color: #fff;
+      }
+
+      .hint {
+        margin: 10px 0 0;
+        font-size: 14px;
+        color: #f4f4f4;
+        opacity: 0.9;
+      }
+
+      canvas {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        background: #1e2a1e;
+      }
+
+      .restart {
+        border: none;
+        border-radius: 8px;
+        padding: 8px 14px;
+        background: #55c36f;
+        color: #102415;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .restart:hover {
+        filter: brightness(1.06);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="panel">
+      <div class="header">
+        <strong>分数：<span id="score">0</span></strong>
+        <button class="restart" id="restart" type="button">重新开始</button>
+      </div>
+      <canvas id="board" width="500" height="500" aria-label="Snake board"></canvas>
+      <p class="hint">方向键 / WASD 控制。撞墙或咬到自己就会结束，按“重新开始”再来一局。</p>
+    </main>
+
+    <script>
+      const board = document.getElementById("board");
+      const ctx = board.getContext("2d");
+      const scoreNode = document.getElementById("score");
+      const restartBtn = document.getElementById("restart");
+
+      const tile = 25;
+      const gridCount = board.width / tile;
+      const speedMs = 120;
+      let timer = null;
+
+      let snake;
+      let direction;
+      let pendingDirection;
+      let food;
+      let score;
+      let gameOver;
+
+      function resetGame() {
+        snake = [
+          { x: 8, y: 10 },
+          { x: 7, y: 10 },
+          { x: 6, y: 10 }
+        ];
+        direction = { x: 1, y: 0 };
+        pendingDirection = { x: 1, y: 0 };
+        score = 0;
+        gameOver = false;
+        scoreNode.textContent = String(score);
+        placeFood();
+        if (timer) {
+          clearInterval(timer);
+        }
+        timer = setInterval(step, speedMs);
+        draw();
+      }
+
+      function placeFood() {
+        do {
+          food = {
+            x: Math.floor(Math.random() * gridCount),
+            y: Math.floor(Math.random() * gridCount)
+          };
+        } while (snake.some((segment) => segment.x === food.x && segment.y === food.y));
+      }
+
+      function step() {
+        if (gameOver) {
+          return;
+        }
+
+        direction = pendingDirection;
+        const head = {
+          x: snake[0].x + direction.x,
+          y: snake[0].y + direction.y
+        };
+
+        const hitWall =
+          head.x < 0 || head.y < 0 || head.x >= gridCount || head.y >= gridCount;
+        const hitSelf = snake.some((segment) => segment.x === head.x && segment.y === head.y);
+
+        if (hitWall || hitSelf) {
+          gameOver = true;
+          clearInterval(timer);
+          draw();
+          return;
+        }
+
+        snake.unshift(head);
+
+        if (head.x === food.x && head.y === food.y) {
+          score += 1;
+          scoreNode.textContent = String(score);
+          placeFood();
+        } else {
+          snake.pop();
+        }
+
+        draw();
+      }
+
+      function draw() {
+        ctx.fillStyle = "#213321";
+        ctx.fillRect(0, 0, board.width, board.height);
+
+        // 画网格
+        ctx.strokeStyle = "rgba(255,255,255,0.05)";
+        for (let i = 0; i <= gridCount; i += 1) {
+          const offset = i * tile;
+          ctx.beginPath();
+          ctx.moveTo(offset, 0);
+          ctx.lineTo(offset, board.height);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(0, offset);
+          ctx.lineTo(board.width, offset);
+          ctx.stroke();
+        }
+
+        // 食物
+        ctx.fillStyle = "#ff6b6b";
+        roundRect(food.x * tile + 3, food.y * tile + 3, tile - 6, tile - 6, 6);
+        ctx.fill();
+
+        // 蛇
+        snake.forEach((segment, index) => {
+          ctx.fillStyle = index === 0 ? "#8ef58e" : "#67d167";
+          roundRect(segment.x * tile + 2, segment.y * tile + 2, tile - 4, tile - 4, 5);
+          ctx.fill();
+        });
+
+        if (gameOver) {
+          ctx.fillStyle = "rgba(0,0,0,0.55)";
+          ctx.fillRect(0, 0, board.width, board.height);
+          ctx.fillStyle = "#fff";
+          ctx.textAlign = "center";
+          ctx.font = "bold 42px sans-serif";
+          ctx.fillText("游戏结束", board.width / 2, board.height / 2 - 10);
+          ctx.font = "24px sans-serif";
+          ctx.fillText(`最终分数：${score}`, board.width / 2, board.height / 2 + 30);
+        }
+      }
+
+      function roundRect(x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+      }
+
+      window.addEventListener("keydown", (event) => {
+        const key = event.key.toLowerCase();
+        const map = {
+          arrowup: { x: 0, y: -1 },
+          w: { x: 0, y: -1 },
+          arrowdown: { x: 0, y: 1 },
+          s: { x: 0, y: 1 },
+          arrowleft: { x: -1, y: 0 },
+          a: { x: -1, y: 0 },
+          arrowright: { x: 1, y: 0 },
+          d: { x: 1, y: 0 }
+        };
+
+        const next = map[key];
+        if (!next || gameOver) {
+          return;
+        }
+
+        const isReverse = next.x === -direction.x && next.y === -direction.y;
+        if (!isReverse) {
+          pendingDirection = next;
+        }
+      });
+
+      restartBtn.addEventListener("click", resetGame);
+      resetGame();
+    </script>
+  </body>
+</html>
